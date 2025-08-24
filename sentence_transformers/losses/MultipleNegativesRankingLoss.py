@@ -11,7 +11,7 @@ from sentence_transformers.SentenceTransformer import SentenceTransformer
 
 import copy
 
-def ed_calc(x, attention_mask):
+def ed_calc_old(x, attention_mask):
     """
     Calculate the energy for all queries in parallel, accounting for padding.
 
@@ -97,6 +97,24 @@ def energy_distance_old(x, y, attention_mask):
     energy_distances = 2 * ed_sums - ed_queries.unsqueeze(1)
 
     return energy_distances
+
+
+def ed_calc(x, attention_mask):
+    B, L, D = x.size()
+    sim_matrix = torch.einsum("bld,bmd->blm", x, x)  # [B, L, L]
+
+    x_norm = torch.norm(x, dim=2)
+    norm1 = x_norm.unsqueeze(2)
+    norm2 = x_norm.unsqueeze(1)
+
+    pairwise_sq = norm1**2 + norm2**2 - 2 * sim_matrix
+    pairwise_dist = torch.sqrt(pairwise_sq.clamp(min=0))
+
+    mask = attention_mask.unsqueeze(2) * attention_mask.unsqueeze(1)
+    masked = pairwise_dist * mask
+    valid = mask.sum(dim=(1, 2)).clamp(min=1)
+    ed = masked.sum(dim=(1, 2)) / valid
+    return ed
 
 def energy_distance(x, y, attention_mask):
     """
